@@ -2,60 +2,83 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Office Status</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sync Status Hub</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background-color: #0f172a; color: white; }
-        .btn-status { transition: all 0.2s ease; border: 2px solid #1e293b; }
+        body { transition: background-color 0.5s ease; color: white; overflow: hidden; }
+        .available { background-color: #064e3b; } /* Deep Green */
+        .busy-talkable { background-color: #78350f; } /* Deep Amber */
+        .dnd { background-color: #7f1d1d; } /* Deep Red */
         
-        /* Matching the requested speeds with CSS animations */
-        .blink-fast { animation: blink 0.4s infinite; }
-        .blink-slow { animation: blink 1.6s infinite; }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-
-        .active-green { border-color: #10b981; background-color: #064e3b; }
-        .active-yellow { border-color: #f59e0b; background-color: #78350f; }
-        .active-red { border-color: #ef4444; background-color: #7f1d1d; }
+        .glass-panel { background: rgba(0,0,0,0.3); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        
+        /* Matching your blink requests for the UI */
+        .blink-fast { animation: pulse 0.4s infinite; }
+        .blink-slow { animation: pulse 1.6s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-6">
-    <div class="max-w-xs w-full space-y-4">
-        <h1 class="text-center text-xl font-bold mb-6">Set Availability</h1>
+<body class="min-h-screen flex items-center justify-center p-6 available" id="bg">
 
-        <button onclick="setStatus('available')" id="available-btn" class="btn-status w-full p-6 rounded-2xl bg-slate-800 flex flex-col items-center">
-            <div class="w-4 h-4 bg-green-500 rounded-full mb-2"></div>
-            <span class="font-bold text-green-400">AVAILABLE</span>
-            <span class="text-xs text-slate-400 font-medium">Solid Green</span>
-        </button>
+    <div class="glass-panel max-w-sm w-full p-8 rounded-[2.5rem] text-center shadow-2xl">
+        <h1 id="status-text" class="text-4xl font-black tracking-tighter mb-2 uppercase">Available</h1>
+        <p id="sub-text" class="text-sm opacity-70 mb-8 font-medium">Synced with LED Hardware</p>
 
-        <button onclick="setStatus('busy-talkable')" id="busy-btn" class="btn-status w-full p-6 rounded-2xl bg-slate-800 flex flex-col items-center">
-            <div class="w-4 h-4 bg-yellow-500 rounded-full mb-2 blink-fast"></div>
-            <span class="font-bold text-yellow-400">BUSY</span>
-            <span class="text-xs text-slate-400 font-medium">Fast Blink Yellow</span>
-        </button>
-
-        <button onclick="setStatus('dnd')" id="dnd-btn" class="btn-status w-full p-6 rounded-2xl bg-slate-800 flex flex-col items-center">
-            <div class="w-4 h-4 bg-red-500 rounded-full mb-2 blink-slow"></div>
-            <span class="font-bold text-red-400">DND</span>
-            <span class="text-xs text-slate-400 font-medium">Slow Blink Red</span>
-        </button>
+        <div class="grid gap-4">
+            <button onclick="changeStatus('available')" class="py-4 rounded-2xl bg-white/10 hover:bg-white/20 font-bold border border-white/10">Green (Solid)</button>
+            <button onclick="changeStatus('busy-talkable')" class="py-4 rounded-2xl bg-white/10 hover:bg-white/20 font-bold border border-white/10">Yellow (Fast Blink)</button>
+            <button onclick="changeStatus('dnd')" class="py-4 rounded-2xl bg-white/10 hover:bg-white/20 font-bold border border-white/10">Red (Slow Blink)</button>
+        </div>
     </div>
 
     <script>
-        async function setStatus(status) {
-            document.querySelectorAll('.btn-status').forEach(b => b.classList.remove('active-green', 'active-yellow', 'active-red'));
-            const map = { 'available': 'active-green', 'busy-talkable': 'active-yellow', 'dnd': 'active-red' };
-            document.getElementById(`${status === 'busy-talkable' ? 'busy' : status}-btn`).classList.add(map[status]);
+        const IP = "YOUR_PI_IP_ADDRESS"; // <-- CHANGE THIS to your Raspberry Pi's IP
+        const statusText = document.getElementById('status-text');
+        const subText = document.getElementById('sub-text');
+        const bg = document.getElementById('bg');
 
+        // 1. Function to SEND status (Remote Mode)
+        async function changeStatus(newStatus) {
             try {
-                await fetch('http://localhost:5000/set_led', {
+                await fetch(`http://${IP}:5000/set_led`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: status })
+                    body: JSON.stringify({ status: newStatus })
                 });
-            } catch (e) { console.error("Server Down"); }
+            } catch (e) { console.error("Update failed"); }
         }
+
+        // 2. Function to SYNC status (Display Mode)
+        async function syncStatus() {
+            try {
+                const res = await fetch(`http://${IP}:5000/get_status`);
+                const data = await res.json();
+                updateUI(data.status);
+            } catch (e) { subText.innerText = "Connecting to Hub..."; }
+        }
+
+        function updateUI(status) {
+            // Update Background and Text
+            bg.className = `min-h-screen flex items-center justify-center p-6 ${status}`;
+            statusText.className = "text-4xl font-black tracking-tighter mb-2 uppercase";
+            
+            if(status === 'available') {
+                statusText.innerText = "Available";
+                subText.innerText = "Come on in";
+            } else if(status === 'busy-talkable') {
+                statusText.innerText = "Busy";
+                statusText.classList.add('blink-fast');
+                subText.innerText = "Only if urgent";
+            } else if(status === 'dnd') {
+                statusText.innerText = "Do Not Disturb";
+                statusText.classList.add('blink-slow');
+                subText.innerText = "Deep Focus Mode";
+            }
+        }
+
+        // Check for updates every 1 second
+        setInterval(syncStatus, 1000);
     </script>
 </body>
 </html>
